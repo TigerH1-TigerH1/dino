@@ -21,28 +21,38 @@ WIDTH, HEIGHT = 850, 400
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
 pygame.display.set_caption("Chrome Dino (Pygame)")
 
-pixel_font = pygame.font.Font("PressStart2P.ttf", 18)
-pixel_font_big = pygame.font.Font("PressStart2P.ttf", 32)
+# Якщо шрифту немає в папці, Pygame автоматично підставить системний дефолтний шрифт
+try:
+    pixel_font = pygame.font.Font("PressStart2P.ttf", 18)
+    pixel_font_big = pygame.font.Font("PressStart2P.ttf", 32)
+except IOError:
+    pixel_font = pygame.font.SysFont("monospace", 18, bold=True)
+    pixel_font_big = pygame.font.SysFont("monospace", 32, bold=True)
 
 # -----------------------------
 # СПРАЙТЫ
 # -----------------------------
-image_player_run1 = pygame.image.load("DinoRun1.png").convert_alpha()
-image_player_run2 = pygame.image.load("DinoRun2.png").convert_alpha()
-image_player_jump = pygame.image.load("DinoJump.png").convert_alpha()
+# Завантажуємо заглушки, якщо реальних картинок немає поруч з файлом
+def load_img(path, size=(40, 40)):
+    try:
+        return pygame.image.load(path).convert_alpha()
+    except pygame.error:
+        surf = pygame.Surface(size, pygame.SRCALPHA)
+        surf.fill((100, 100, 100))
+        return surf
 
-image_cactus1 = pygame.image.load("SmallCactus1.png").convert_alpha()
-image_cactus2 = pygame.image.load("SmallCactus2.png").convert_alpha()
-image_cactus3 = pygame.image.load("SmallCactus3.png").convert_alpha()
+image_player_run1 = load_img("DinoRun1.png", (44, 47))
+image_player_run2 = load_img("DinoRun2.png", (44, 47))
+image_player_jump = load_img("DinoJump.png", (44, 47))
+
+image_cactus1 = load_img("SmallCactus1.png", (34, 35))
+image_cactus2 = load_img("SmallCactus2.png", (34, 35))
+image_cactus3 = load_img("SmallCactus3.png", (34, 35))
 cactus_images = [image_cactus1, image_cactus2, image_cactus3]
 
-image_cloud = pygame.image.load("Cloud.png").convert_alpha()
-image_ground = pygame.image.load("Track.png").convert_alpha()
-
-# >>> ДОБАВЛЕНО: Гора
-image_mountain = pygame.image.load("Mountain.png").convert_alpha()
-# <<<
-
+image_cloud = load_img("Cloud.png", (92, 27))
+image_ground = load_img("Track.png", (1200, 12))
+image_mountain = load_img("Mountain.png", (100, 60))
 
 def scale_pixelart_clean(img, scale):
     w, h = img.get_width(), img.get_height()
@@ -52,8 +62,8 @@ def scale_pixelart_clean(img, scale):
     final = pygame.transform.scale(big, (new_w, new_h))
     return final
 
-raw_ptero1 = pygame.image.load("Ptero1.png").convert_alpha()
-raw_ptero2 = pygame.image.load("Ptero2.png").convert_alpha()
+raw_ptero1 = load_img("Ptero1.png", (46, 40))
+raw_ptero2 = load_img("Ptero2.png", (46, 40))
 
 image_ptero1 = scale_pixelart_clean(raw_ptero1, 1.5)
 image_ptero2 = scale_pixelart_clean(raw_ptero2, 1.5)
@@ -74,6 +84,7 @@ dust_particles = []
 
 wind_force = 0
 wind_target = 0
+
 # -----------------------------
 # КРОВАВАЯ НОЧЬ
 # -----------------------------
@@ -88,8 +99,9 @@ blood_night_cooldown = 0
 # -----------------------------
 def trim(img):
     rect = img.get_bounding_rect()
+    if rect.width == 0 or rect.height == 0:
+        return img
     return img.subsurface(rect).copy()
-
 
 class Pterodactyl:
     def __init__(self, x, speed_factor):
@@ -141,7 +153,6 @@ class Pterodactyl:
 # -----------------------------
 # ИГРОК
 # -----------------------------
-
 class Player:
     def __init__(self, x):
         self.run_frames = [image_player_run1, image_player_run2]
@@ -174,7 +185,7 @@ class Player:
         self.dash_cooldown_timer = 0
         self.dash_direction = 1
 
-        self.frozen_y = None  # высота зависания
+        self.frozen_y = None
 
     def get_hitbox(self):
         return pygame.Rect(
@@ -193,8 +204,6 @@ class Player:
         # --- Запуск дэша ---
         if not self.is_dashing and self.dash_cooldown_timer == 0:
             if keys[pygame.K_RETURN]:
-
-                # направление
                 if keys[pygame.K_RIGHT]:
                     self.dash_direction = 1
                 elif keys[pygame.K_LEFT]:
@@ -204,23 +213,18 @@ class Player:
 
                 self.is_dashing = True
                 self.dash_timer = self.dash_duration
-
-                # зависание по высоте
                 self.frozen_y = self.rect.top
-                self.velocity_y = 0  # гасим вертикальную скорость
+                self.velocity_y = 0
 
         # --- Дэш ---
         if self.is_dashing:
             dash_push = self.dash_speed * self.dash_direction
             self.dash_timer -= 1
 
-            # --- Плавное зависание ---
             if self.dash_timer > 2:
-                # обычное удержание высоты
-                self.rect.top += (self.frozen_y - self.rect.top) * 0.35
+                self.rect.top += int((self.frozen_y - self.rect.top) * 0.35)
             else:
-                # последние кадры — короткое мягкое зависание
-                self.rect.top += (self.frozen_y - self.rect.top) * 0.12
+                self.rect.top += int((self.frozen_y - self.rect.top) * 0.12)
 
             if self.dash_timer <= 0:
                 self.is_dashing = False
@@ -229,7 +233,7 @@ class Player:
         elif self.dash_cooldown_timer > 0:
             self.dash_cooldown_timer -= 1
 
-        # --- Обычное движение (если не дэш) ---
+        # --- Обычное движение ---
         if not self.is_dashing:
             if keys[pygame.K_RIGHT]:
                 self.rect.x += move_speed
@@ -239,10 +243,8 @@ class Player:
         if storm_active:
             self.rect.x += int(wind_force * 0.4)
 
-        # self.rect.x = max(20, min(self.rect.x, 300))
-
         # --- Прыжок и гравитация ---
-        if not self.is_dashing:  # гравитация выключена во время дэша
+        if not self.is_dashing:
             if (keys[pygame.K_SPACE] or keys[pygame.K_UP]) and not self.in_air:
                 self.velocity_y = -21
                 self.in_air = True
@@ -304,9 +306,7 @@ class Cloud:
         self.image = image_cloud
         cloud_y = randint(20, 200)
         cloud_x = randint(-900, WIDTH) if start else WIDTH
-        self.rect = pygame.Rect(cloud_x, cloud_y,
-                                self.image.get_width(),
-                                self.image.get_height())
+        self.rect = pygame.Rect(cloud_x, cloud_y, self.image.get_width(), self.image.get_height())
         self.speed = randint(1, 2)
 
     def update(self):
@@ -314,29 +314,24 @@ class Cloud:
 
     def draw(self, surface):
         surface.blit(self.image, self.rect)
-import pygame
-from random import randint
 
 
 # -----------------------------
-# >>> ДОБАВЛЕНО: Гора
+# ГОРА
 # -----------------------------
 class Mountain:
     def __init__(self):
         self.image = image_mountain
-
         scale = 2.2
         w = int(self.image.get_width() * scale)
         h = int(self.image.get_height() * scale)
         self.image = pygame.transform.scale(self.image, (w, h))
 
-        # опускаем, чтобы стояла на земле
         self.rect = pygame.Rect(
             WIDTH + randint(200, 600),
             GROUND_Y - h + 133,
             w, h
         )
-
         self.speed = randint(1, 2)
 
     def update(self):
@@ -347,7 +342,7 @@ class Mountain:
 
 
 # -----------------------------
-# ЗЕМЛЯ + ОБЛАКА + ГОРЫ
+# ОКРУЖЕНИЕ
 # -----------------------------
 class Environment:
     def __init__(self):
@@ -356,15 +351,11 @@ class Environment:
 
         self.clouds = [Cloud(start=True) for _ in range(8)]
         self.cloud_timer = 0
-        self.cloud_timer_max = 120
 
         self.mountains = []
         self.mountain_timer = 0
-
-        # редкий интервал появления гор
         self.mountain_interval = randint(900, 1500)
 
-        # первая гора — сразу, чуть дальше центра
         first_mountain = Mountain()
         first_mountain.rect.x = WIDTH // 2 + 120
         self.mountains.append(first_mountain)
@@ -375,20 +366,13 @@ class Environment:
         speed = 9 + speed_factor
         self.offset -= int(speed + wind_force * 0.5)
 
-        # движение мира от дэша
         if dash_push != 0:
-            # земля
             self.offset -= int(dash_push)
-
-            # горы — МЕДЛЕННЕЕ
             for m in self.mountains:
                 m.rect.x -= int(dash_push * 0.15)
-
-            # облака — БЫСТРЕЕ
             for c in self.clouds:
                 c.rect.x -= int(dash_push * 0.35)
 
-            # плавное затухание
             dash_push *= 0.8
             if abs(dash_push) < 0.5:
                 dash_push = 0
@@ -396,7 +380,6 @@ class Environment:
         if self.offset <= -self.image.get_width():
             self.offset = 0
 
-        # --- ГОРЫ (редкие) ---
         self.mountain_timer += 1
         if self.mountain_timer >= self.mountain_interval:
             self.mountain_timer = 0
@@ -408,7 +391,6 @@ class Environment:
             if m.rect.right < 0:
                 self.mountains.remove(m)
 
-        # --- ОБЛАКА ---
         self.cloud_timer += 1
         if self.cloud_timer >= randint(100, 200):
             self.cloud_timer = 0
@@ -422,15 +404,12 @@ class Environment:
     def draw(self, surface):
         shake = int(wind_force * 0.3)
 
-        # земля
         surface.blit(self.image, (self.offset, GROUND_Y + shake))
         surface.blit(self.image, (self.offset + self.image.get_width(), GROUND_Y + shake))
 
-        # горы (позади облаков по логике глубины)
         for m in self.mountains:
             m.draw(surface)
 
-        # облака (поверх гор)
         for c in self.clouds:
             c.draw(surface)
 
@@ -464,6 +443,7 @@ class CactusGroup:
         for o in self.obstacles:
             o.draw(surface)
 
+
 # -----------------------------
 # ВРАЖЕСКИЙ ДИНОЗАВР
 # -----------------------------
@@ -475,31 +455,18 @@ class EnemyDino:
         ]
 
         h = self.frames[0].get_height()
-        self.rect = pygame.Rect(
-            x,
-            GROUND_LINE - h,
-            self.frames[0].get_width(),
-            h
-        )
-
-        # Скорость
+        self.rect = pygame.Rect(x, GROUND_LINE - h, self.frames[0].get_width(), h)
         self.speed = 7.5 + speed_factor * 0.5
 
-        # Анимация
         self.anim = 0
         self.anim_timer = 0
-
-        # Панцирная реакция
-        self.armor_timer = 0      # дрожь
-        self.pushback = 0         # отскок назад
+        self.armor_timer = 0
+        self.pushback = 0
 
     def update(self, cactus_group):
         global dash_push
 
-        # движение
         move = self.speed
-
-        # если был удар — временно замедляем
         if self.pushback > 0:
             move *= 0.5
             self.pushback -= 1
@@ -508,7 +475,6 @@ class EnemyDino:
         if dash_push != 0:
             self.rect.x -= int(dash_push)
 
-        # проверяем столкновение с кактусами
         collided = False
         for c in cactus_group.obstacles:
             if self.get_hitbox().colliderect(c.get_hitbox()):
@@ -516,15 +482,12 @@ class EnemyDino:
                 break
 
         if collided:
-            # включаем эффект панциря
             self.armor_timer = 8
             self.pushback = 3
 
-        # уменьшаем таймер дрожи
         if self.armor_timer > 0:
             self.armor_timer -= 1
 
-        # анимация
         self.anim_timer += 1
         if self.anim_timer >= 6:
             self.anim_timer = 0
@@ -532,13 +495,7 @@ class EnemyDino:
 
     def draw(self, surface):
         img = self.frames[self.anim]
-
-        # дрожание при ударе
-        if self.armor_timer > 0:
-            shake = -2 if (self.armor_timer % 2 == 0) else 2
-        else:
-            shake = 0
-
+        shake = -2 if (self.armor_timer % 2 == 0 and self.armor_timer > 0) else 0
         surface.blit(img, (self.rect.x, self.rect.y + shake))
 
     def get_hitbox(self):
@@ -546,7 +503,7 @@ class EnemyDino:
 
 
 # -----------------------------
-# СБРОС БУРИ
+# СБРОС СОСТОЯНИЙ
 # -----------------------------
 def reset_storm():
     global storm_active, storm_intensity, storm_timer, storm_duration, storm_cooldown
@@ -563,7 +520,6 @@ def reset_storm():
 def reset_blood_night():
     global blood_night_active, blood_night_intensity
     global blood_night_timer, blood_night_duration, blood_night_cooldown
-
     blood_night_active = False
     blood_night_intensity = 0
     blood_night_timer = 0
@@ -578,25 +534,20 @@ player = Player(40)
 environment = Environment()
 cactus_group = CactusGroup(base_speed=9)
 
-
 pteros = []
 enemy_dinos = []
-
-ptero_spawn_timer = 0
-enemy_dino_spawn_timer = 0
 
 clock = pygame.time.Clock()
 running = True
 game_over = False
 high_score = 0
 
-
-# -----------------------------
-# ПЕРЕМЕННЫЕ ДЛЯ ЧЕРЕДОВАНИЯ ВРАГОВ
-# -----------------------------
 spawn_timer = 0
 spawn_delay = 130
-next_is_ptero = True  # True -> Pterodactyl, False -> EnemyDino
+next_is_ptero = True
+
+# Головна поверхня для малювання гри (потрібна для тонування Кривавої Ночі)
+game_surface = pygame.Surface((WIDTH, HEIGHT))
 
 # -----------------------------
 # ГЛАВНЫЙ ЦИКЛ
@@ -606,9 +557,7 @@ while running:
         if event.type == pygame.QUIT:
             running = False
 
-    # -----------------------------
-    # КРОВАВАЯ НОЧЬ (НЕ МОЖЕТ БЫТЬ С БУРЕЙ)
-    # -----------------------------
+    # КРОВАВАЯ НОЧЬ триггер
     if not storm_active and blood_night_cooldown == 0:
         if not blood_night_active and randint(1, 520) == 1:
             blood_night_active = True
@@ -616,21 +565,17 @@ while running:
             blood_night_timer = 0
             reset_storm()
 
-    # -----------------------------
-    # БУРЯ
-    # -----------------------------
+    # БУРЯ триггер
     if storm_cooldown > 0:
         storm_cooldown -= 1
 
-
-    if not storm_active and storm_cooldown == 0 and randint(1, 420) == 1:
+    if not storm_active and not blood_night_active and storm_cooldown == 0 and randint(1, 420) == 1:
         storm_active = True
         storm_duration = 8 * 60
         storm_timer = 0
 
     if storm_active:
         storm_timer += 1
-
         if storm_timer < storm_duration:
             storm_intensity = min(storm_intensity + 0.5, 30)
         else:
@@ -655,22 +600,20 @@ while running:
             ])
     else:
         wind_force *= 0.9
-    # -----------------------------
-    # ОБНОВЛЕНИЕ КРОВАВОЙ НОЧИ
-    # -----------------------------
+
+    # ОБНОВЛЕНИЕ КРОВАВОЙ НОЧЬ
     if blood_night_active:
         blood_night_timer += 1
-
         if blood_night_timer < blood_night_duration:
             blood_night_intensity = min(blood_night_intensity + 0.4, 40)
         else:
             blood_night_intensity -= 0.4
-        if blood_night_intensity <= 0:
-            blood_night_intensity = 0
-            blood_night_active = False
-            blood_night_cooldown = 600
+            if blood_night_intensity <= 0:
+                blood_night_intensity = 0
+                blood_night_active = False
+                blood_night_cooldown = 600
 
-
+    # Часточки пилу бурі
     for p in dust_particles[:]:
         p[0] -= p[3] + wind_force
         p[4] -= 4
@@ -684,22 +627,15 @@ while running:
         environment.update(speed_factor)
         cactus_group.update(speed_factor)
 
-        # -----------------------------
-        # ЧЕРЕДОВАНИЕ ПТЕРО / ЭНЕМИ 50/50
-        # -----------------------------
+        # ЧЕРЕДОВАНИЕ ПТЕРО / ЭНЕМИ
         spawn_timer += 1
         if spawn_timer >= spawn_delay:
             spawn_timer = 0
-
             if randint(0, 1) == 0:
-
-                # спавним птеро
                 pteros.append(Pterodactyl(WIDTH + 20, speed_factor))
             else:
-                # спавним EnemyDino с учётом расстояния до ближайшего кактуса
                 spawn_x = WIDTH + 40
                 min_dist = None
-
                 for c in cactus_group.obstacles:
                     dist = c.rect.left - spawn_x
                     if dist < 0:
@@ -711,8 +647,6 @@ while running:
                     spawn_x += (200 - min_dist)
 
                 enemy_dinos.append(EnemyDino(spawn_x, speed_factor))
-
-            next_is_ptero = not next_is_ptero
 
         for pt in pteros[:]:
             pt.update()
@@ -735,7 +669,6 @@ while running:
                 game_over = True
                 high_score = max(high_score, cactus_group.score)
                 break
-
     else:
         keys = pygame.key.get_pressed()
         if keys[pygame.K_r]:
@@ -744,60 +677,50 @@ while running:
             cactus_group = CactusGroup(base_speed=9)
             pteros = []
             enemy_dinos = []
-            # сбрасываем таймер и флаг чередования
             spawn_timer = 0
             next_is_ptero = True
             reset_storm()
+            reset_blood_night()
             game_over = False
 
-    screen.fill(BG_COLOR)
-
-    environment.draw(screen)
-    cactus_group.draw(screen)
+    # Малюємо все спочатку на віртуальну поверхню гри
+    game_surface.fill(BG_COLOR)
+    environment.draw(game_surface)
+    cactus_group.draw(game_surface)
 
     for pt in pteros:
-        pt.draw(screen)
-
+        pt.draw(game_surface)
     for ed in enemy_dinos:
-        ed.draw(screen)
+        ed.draw(game_surface)
 
-
-    player.draw(screen)
+    player.draw(game_surface)
 
     for p in dust_particles:
         s = pygame.Surface((p[2], p[2]), pygame.SRCALPHA)
         s.fill((180, 180, 180, p[4]))
-        screen.blit(s, (p[0], p[1]))
+        game_surface.blit(s, (p[0], p[1]))
 
+    # Ефект затемнення бурі
     if storm_intensity > 0:
         dark = pygame.Surface((WIDTH, HEIGHT))
         dark.fill((10, 10, 10))
         dark.set_alpha(min(int(storm_intensity * 2), 60))
-        screen.blit(dark, (0, 0))
+        game_surface.blit(dark, (0, 0))
 
+    # Візуалізація ефекту Кривавої Ночі через функцію тонування
     if blood_night_active:
-
-    # фон
-    screen.fill((255, 120, 150))
-
-    # земля
-    pygame.draw.rect(screen, (0, 0, 0), (0, ground_y, WIDTH, HEIGHT - ground_y))
-
-    # перекраска объектов
-    px = pygame.surfarray.pixels3d(screen)
-
-    # почти чёрные объекты (дино, кактусы, птеро, enemy)
-    mask_dark = (px[:,:,0] < 100) & (px[:,:,1] < 100) & (px[:,:,2] < 100)
-    px[mask_dark] = (20, 20, 20)
-
-    # светло-голубые (облака, горы)
-    mask_sky = (px[:,:,0] > 150) & (px[:,:,1] > 150) & (px[:,:,2] > 150)
-    px[mask_sky] = (120, 180, 255)
-
-    del px
+        # Тонуємо картинку гри у червоний відтінок
+        final_surface = tint_color(game_surface, (255, 120, 120))
+    else:
+        final_surface = game_surface
+    
 
     
 
+    # Виводимо фінальну картинку на реальний екран
+    screen.blit(final_surface, (0, 0))
+
+    # Інтерфейс (рахунок та текст) малюється поверх усього без спотворень кольору
     score_text = pixel_font.render(f"{cactus_group.score:05}", True, BLACK)
     screen.blit(score_text, (WIDTH - 150, 20))
 
@@ -811,10 +734,8 @@ while running:
 
         restart_text = pixel_font.render("PRESS R TO RESTART", True, BLACK)
         screen.blit(restart_text, (WIDTH // 2 - 180, HEIGHT // 2 + 10))
-    
-
 
     pygame.display.flip()
     clock.tick(FPS)
-    
+
 pygame.quit()
